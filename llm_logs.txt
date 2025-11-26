@@ -1,0 +1,135 @@
+================================================================================
+LLM SESSION LOG - HOMEWORK: NanoGPT RLVR & Alignment
+DATE: November 25, 2025
+MODEL USED: Gemini / ChatGPT-4o
+================================================================================
+
+[SESSION 1: CONCEPTUAL UNDERSTANDING]
+
+USER:
+I need to implement GRPO (Group Relative Policy Optimization) for a NanoGPT model. 
+How is the advantage calculated in GRPO compared to PPO? I don't want to use a Critic model.
+
+AI:
+In GRPO, instead of using a separate Value (Critic) network to estimate the baseline, 
+you estimate the baseline by sampling a group of outputs {o_1, o_2, ..., o_G} from the 
+same prompt.
+
+The advantage for the i-th output is calculated as:
+A_i = (Reward_i - Mean(Group_Rewards)) / (Std(Group_Rewards) + epsilon)
+
+This normalizes the rewards within the group. You then use this advantage in the 
+standard PPO policy loss formula, but without the Value function loss term.
+
+--------------------------------------------------------------------------------
+
+[SESSION 2: DEBUGGING CUDA ERRORS]
+
+USER:
+I am trying to run my GRPO training script, but I keep getting this error:
+"RuntimeError: CUDA error: device-side assert triggered"
+It happens right when I call model.generate(). My model is trained on Sherlock data.
+
+AI:
+A "device-side assert" in embedding layers usually means your input token IDs are 
+larger than the model's vocabulary size.
+
+1. Did you train a custom tokenizer (Char-level) or are you using GPT-2's BPE?
+2. If your model is Char-level (vocab size ~65) but you use TikToken (vocab 50257), 
+   it will crash.
+
+Check your model loading section. You need to load the 'meta.pkl' file to get the 
+correct 'stoi' mapping.
+
+USER:
+You are right. I was using tiktoken by default. How do I fix the code to detect 
+the vocab size from the checkpoint?
+
+AI:
+You can inspect `model.transformer.wte.weight.shape[0]` after loading the checkpoint. 
+Here is a snippet to make the tokenizer loading robust:
+
+[CODE BLOCK PROVIDED: Checking real_vocab_size and switching between Char/BPE]
+
+--------------------------------------------------------------------------------
+
+[SESSION 3: IMPLEMENTING THE VERIFIER]
+
+USER:
+I need a simple deterministic verifier for the assignment. The goal is to verify 
+if the model follows a specific rule. What is a cheap O(N) function I can use?
+
+AI:
+A character-count verifier is the simplest and most visually obvious choice.
+For example, maximize the count of the letter 'e'.
+
+def verifier_reward(text):
+    return text.count('e') + text.count('E')
+
+This forces the model to learn a specific pattern (spamming 'e's) which is easy 
+to track in a loss curve.
+
+--------------------------------------------------------------------------------
+
+[SESSION 4: DEBUGGING TRAINING LOOP]
+
+USER:
+I fixed the tokenizer, but now I get this error during the optimization phase:
+"RuntimeError: Size does not match at dimension 0"
+It happens when I try to slice the logits.
+
+AI:
+This is likely a NanoGPT optimization issue. In the `forward` method of standard 
+NanoGPT, if `targets` is None, it only returns the logits for the *last* token 
+to save memory during inference.
+
+For GRPO training, you need the full sequence logits. 
+Change your call from:
+logits, _ = model(idx)
+To:
+logits, _ = model(idx, targets=idx)
+
+This forces the model to compute the full logit tensor.
+
+--------------------------------------------------------------------------------
+
+[SESSION 5: DPO IMPLEMENTATION]
+
+USER:
+For Part 1 (Alignment), I need to construct a preference dataset. 
+Should I generate new samples or use the existing training data?
+
+AI:
+Using the existing training data is more stable ("Offline DPO"). 
+1. Sample two random chunks from `train.bin`.
+2. Score both using your heuristic (e.g., ratio of common English words).
+3. The higher score is the "Winner" (yw), the lower is the "Loser" (yl).
+4. If the scores are too similar, discard the pair.
+
+This avoids the noise of sampling from an untrained model.
+
+--------------------------------------------------------------------------------
+
+[SESSION 6: VISUALIZATION]
+
+USER:
+I have my baseline model and my DPO aligned model. Can you give me a Python script 
+using matplotlib to plot a histogram comparing their heuristic scores? 
+I want them on the same plot to show the distribution shift.
+
+AI:
+Certainly. You need to generate N samples from both models, score them, and overlay 
+the histograms.
+
+[CODE BLOCK PROVIDED: matplotlib script generating 'dpo_impact.png']
+
+--------------------------------------------------------------------------------
+
+[SESSION 7: REPORT GENERATION]
+
+USER:
+Can you help me format these results into LaTeX? I have the plots and the text logs.
+
+AI:
+[Provided LaTeX template structure including sections for Heuristic Definition, 
+Reward Model Architecture, and GRPO Results].
